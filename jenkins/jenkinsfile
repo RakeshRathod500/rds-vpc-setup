@@ -1,0 +1,64 @@
+pipeline {
+  agent any
+  environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+  }
+  parameters {
+    choice(name: 'ENV', choices: ['dev','staging','prod'], description: 'Environment')
+  }
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+    stage('Set TF Vars') {
+      steps {
+        script {
+          if (params.ENV == 'prod') {
+            env.TF_VARS_FILE = 'terraform/prod.tfvars'
+          } else if (params.ENV == 'staging') {
+            env.TF_VARS_FILE = 'terraform/staging.tfvars'
+          } else {
+            env.TF_VARS_FILE = 'terraform/dev.tfvars'
+          }
+        }
+      }
+    }
+    stage('Terraform Init') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh '''
+            cd infra
+            terraform init -backend-config="bucket=${TFSTATE_BUCKET}" -backend-config="region=${AWS_DEFAULT_REGION}"
+          '''
+        }
+      }
+    }
+    stage('Terraform Plan') {
+      steps {
+        sh '''
+          cd infra
+          terraform plan -var-file=${TF_VARS_FILE} -out=tfplan
+        '''
+      }
+    }
+    stage('Terraform Apply') {
+      steps {
+        input message: "Apply to ${params.ENV}?"
+        sh '''
+          cd infra
+          terraform apply -auto-approve tfplan
+        '''
+      }
+    }
+  }
+  post {
+    failure {
+      echo "Pipeline failed"
+    }
+    success {
+      echo "Finished"
+    }
+  }
+}

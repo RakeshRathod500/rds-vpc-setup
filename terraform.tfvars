@@ -1,0 +1,6 @@
+region = "ap-south-1"
+name_prefix = "rakeshrathod"
+tfstate_bucket = "my-terraform-state-bucket"
+tfstate_lock_table = "terraform-locks"
+db_password = "admin1234"
+db_instance_class = "db.t3.micro"

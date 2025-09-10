@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+    environment {
+        AWS_DEFAULT_REGION = 'ap-south-1' // change region if needed
+        TFSTATE_BUCKET     = 'your-tfstate-bucket' // change to your S3 bucket
+    }
+    parameters {
+        choice(
+            name: 'ENV', 
+            choices: ['dev', 'prod'], 
+            description: 'Environment to destroy'
+        )
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Set TF Vars') {
+            steps {
+                script {
+                    // Correct path to your .tfvars files in RDS SETUP folder
+                    env.TF_VARS_FILE = "RDS SETUP/${params.ENV}.tfvars"
+                }
+            }
+        }
+        stage('Terraform Init') {
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+                    sh '''
+                        cd "RDS SETUP"
+                        terraform init -backend-config="bucket=${TFSTATE_BUCKET}" -backend-config="region=${AWS_DEFAULT_REGION}"
+                    '''
+                }
+            }
+        }
+        stage('Terraform Destroy') {
+            steps {
+                input message: "Are you sure you want to destroy ${params.ENV}?"
+                sh '''
+                    cd "RDS SETUP"
+                    terraform destroy -var-file=${TF_VARS_FILE} -auto-approve
+                '''
+            }
+        }
+    }
+    post {
+        success {
+            echo "Destroy completed successfully for ${params.ENV}"
+        }
+        failure {
+            echo "Destroy failed for ${params.ENV}"
+        }
+    }
+}
