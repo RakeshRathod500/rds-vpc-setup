@@ -3,42 +3,36 @@ pipeline {
 
   environment {
     AWS_DEFAULT_REGION = 'ap-south-1'
-    TF_VARS_FILE = 'terraform/dev.tfvars'
+    TF_VARS_FILE = 'terraform.tfvars'
   }
 
   stages {
     stage('Checkout') {
       steps {
-        git branch: 'main', url: 'https://github.com/RakeshRathod500/rds-vpc-setup.git'
+        git branch: 'main',
+            url: 'https://github.com/RakeshRathod500/rds-vpc-setup.git'
       }
     }
 
     stage('Terraform Init') {
       steps {
-        script {
-          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-cred-id']]) {
-            sh '''
-              echo "✅ Running Terraform Init..."
-              terraform init -backend-config="region=${AWS_DEFAULT_REGION}"
-            '''
-          }
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh '''
+            terraform init
+          '''
         }
       }
     }
 
     stage('Terraform Validate') {
       steps {
-        sh '''
-          echo "✅ Validating Terraform..."
-          terraform validate
-        '''
+        sh 'terraform validate'
       }
     }
 
     stage('Terraform Plan') {
       steps {
         sh '''
-          echo "✅ Running Terraform Plan..."
           terraform plan -var-file=${TF_VARS_FILE} -out=tfplan
         '''
       }
@@ -47,20 +41,17 @@ pipeline {
     stage('Terraform Apply') {
       steps {
         input message: "Proceed with Terraform Apply?"
-        sh '''
-          echo "🚀 Applying Terraform..."
-          terraform apply -auto-approve tfplan
-        '''
+        sh 'terraform apply -auto-approve tfplan'
       }
     }
   }
 
   post {
+    success {
+      echo "✅ Terraform apply successful!"
+    }
     failure {
       echo "❌ Pipeline failed. Check logs."
-    }
-    success {
-      echo "🎉 Terraform Deployment Finished Successfully!"
     }
   }
 }
