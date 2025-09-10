@@ -1,56 +1,66 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        TF_HOME = "${WORKSPACE}"
+  environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+    TF_VARS_FILE = 'terraform/dev.tfvars'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'main', url: 'https://github.com/RakeshRathod500/rds-vpc-setup.git'
+      }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/RakeshRathod500/rds-vpc-setup.git'
-            }
+    stage('Terraform Init') {
+      steps {
+        script {
+          withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-cred-id']]) {
+            sh '''
+              echo "✅ Running Terraform Init..."
+              terraform init -backend-config="region=${AWS_DEFAULT_REGION}"
+            '''
+          }
         }
-
-        stage('Terraform Init') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
-                                  credentialsId: 'aws-cred-id']]) {
-                    sh '''
-                        terraform init \
-                          -backend-config="region=ap-south-1"
-                    '''
-                }
-            }
-        }
-
-        stage('Terraform Validate') {
-            steps {
-                sh 'terraform validate'
-            }
-        }
-
-        stage('Terraform Plan') {
-            steps {
-                sh 'terraform plan -var-file=terraform.tfvars -out=tfplan'
-            }
-        }
-
-        stage('Terraform Apply') {
-            steps {
-                input message: 'Apply changes?', ok: 'Yes, Apply'
-                sh 'terraform apply -auto-approve tfplan'
-            }
-        }
+      }
     }
 
-    post {
-        success {
-            echo '✅ Terraform apply completed successfully!'
-        }
-        failure {
-            echo '❌ Pipeline failed. Check logs.'
-        }
+    stage('Terraform Validate') {
+      steps {
+        sh '''
+          echo "✅ Validating Terraform..."
+          terraform validate
+        '''
+      }
     }
+
+    stage('Terraform Plan') {
+      steps {
+        sh '''
+          echo "✅ Running Terraform Plan..."
+          terraform plan -var-file=${TF_VARS_FILE} -out=tfplan
+        '''
+      }
+    }
+
+    stage('Terraform Apply') {
+      steps {
+        input message: "Proceed with Terraform Apply?"
+        sh '''
+          echo "🚀 Applying Terraform..."
+          terraform apply -auto-approve tfplan
+        '''
+      }
+    }
+  }
+
+  post {
+    failure {
+      echo "❌ Pipeline failed. Check logs."
+    }
+    success {
+      echo "🎉 Terraform Deployment Finished Successfully!"
+    }
+  }
 }
-
