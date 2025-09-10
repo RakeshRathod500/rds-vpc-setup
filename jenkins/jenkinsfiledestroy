@@ -1,56 +1,51 @@
 pipeline {
-    agent any
-    environment {
-        AWS_DEFAULT_REGION = 'ap-south-1' // change region if needed
-        TFSTATE_BUCKET     = 'your-tfstate-bucket' // change to your S3 bucket
+  agent any
+
+  environment {
+    AWS_DEFAULT_REGION = 'ap-south-1'
+    TF_VARS_FILE = 'terraform.tfvars'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'main',
+            url: 'https://github.com/RakeshRathod500/rds-vpc-setup.git'
+      }
     }
-    parameters {
-        choice(
-            name: 'ENV', 
-            choices: ['dev', 'prod'], 
-            description: 'Environment to destroy'
-        )
+
+    stage('Terraform Init') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh 'terraform init'
+        }
+      }
     }
-    stages {
-        stage('Checkout') {
-            steps {
-                checkout scm
-            }
+
+    stage('Terraform Plan Destroy') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh 'terraform plan -destroy -var-file=${TF_VARS_FILE} -out=tfdestroy'
         }
-        stage('Set TF Vars') {
-            steps {
-                script {
-                    // Correct path to your .tfvars files in RDS SETUP folder
-                    env.TF_VARS_FILE = "RDS SETUP/${params.ENV}.tfvars"
-                }
-            }
-        }
-        stage('Terraform Init') {
-            steps {
-                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
-                    sh '''
-                        cd "RDS SETUP"
-                        terraform init -backend-config="bucket=${TFSTATE_BUCKET}" -backend-config="region=${AWS_DEFAULT_REGION}"
-                    '''
-                }
-            }
-        }
-        stage('Terraform Destroy') {
-            steps {
-                input message: "Are you sure you want to destroy ${params.ENV}?"
-                sh '''
-                    cd "RDS SETUP"
-                    terraform destroy -var-file=${TF_VARS_FILE} -auto-approve
-                '''
-            }
-        }
+      }
     }
-    post {
-        success {
-            echo "Destroy completed successfully for ${params.ENV}"
+
+    stage('Terraform Destroy') {
+      steps {
+        input message: "⚠️ Are you sure you want to destroy all resources?"
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          sh 'terraform apply -auto-approve tfdestroy'
         }
-        failure {
-            echo "Destroy failed for ${params.ENV}"
-        }
+      }
     }
+  }
+
+  post {
+    success {
+      echo "✅ Terraform destroy completed!"
+    }
+    failure {
+      echo "❌ Destroy pipeline failed. Check logs."
+    }
+  }
 }
