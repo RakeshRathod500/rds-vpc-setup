@@ -12,6 +12,7 @@ pipeline {
         checkout scm
       }
     }
+
     stage('Set TF Vars') {
       steps {
         script {
@@ -25,34 +26,35 @@ pipeline {
         }
       }
     }
+
     stage('Terraform Init') {
       steps {
         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
           sh '''
-            cd infra
             terraform init -backend-config="bucket=${TFSTATE_BUCKET}" -backend-config="region=${AWS_DEFAULT_REGION}"
           '''
         }
       }
     }
+
     stage('Terraform Plan') {
       steps {
         sh '''
-          cd infra
           terraform plan -var-file=${TF_VARS_FILE} -out=tfplan
         '''
       }
     }
+
     stage('Terraform Apply') {
       steps {
         input message: "Apply to ${params.ENV}?"
         sh '''
-          cd infra
           terraform apply -auto-approve tfplan
         '''
       }
     }
   }
+
   post {
     failure {
       echo "Pipeline failed"
